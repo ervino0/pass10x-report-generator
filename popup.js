@@ -15,8 +15,10 @@ document.getElementById('prepPage').addEventListener('click', async () => {
     status.innerText = "⏳ Connecting to database...";
 
     try {
-        // 2. Get Tab
+        // 2. Get Tab & Checkbox State
         let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const excludeWarning0 = document.getElementById('excludeWarning0').checked;
+        const includeNotes = document.getElementById('includeNotes').checked;
 
         // 3. Inject Script
         status.innerText = "⏳ Fetching 180 days of records...";
@@ -24,7 +26,8 @@ document.getElementById('prepPage').addEventListener('click', async () => {
         const results = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             world: 'MAIN',
-            func: () => {
+            args: [excludeWarning0, includeNotes],
+            func: (excludeWarning0, includeNotes) => {
                 return new Promise(async (resolve) => {
                     console.log("=== Pass 10x Report Generator ===");
 
@@ -89,18 +92,47 @@ document.getElementById('prepPage').addEventListener('click', async () => {
                             hour: '2-digit', minute: '2-digit', hour12: true
                         }).replace(/,/g, "");
 
-                        const cleanWarnings = records.filter(v =>
-                            (v.nowarn !== null && v.nowarn !== undefined) &&
-                            (v.noticket === null || v.noticket === "") &&
-                            (v.notow === null || v.notow === "")
-                        );
+                        const cleanWarnings = records.filter(v => {
+                            // Check for warnings (nowarn can be a number, including 0)
+                            const hasWarning = v.nowarn !== null && v.nowarn !== undefined && v.nowarn !== "";
+
+                            // Check for fines/tickets (noticket is typically a number string like "1")
+                            const hasFine = v.noticket !== null && v.noticket !== undefined && v.noticket !== "";
+
+                            // Check for tows (notow is typically a number string like "1")
+                            const hasTow = v.notow !== null && v.notow !== undefined && v.notow !== "";
+
+                            // Notes are records with no violations (no warning, fine, or tow)
+                            const isNote = !hasWarning && !hasFine && !hasTow;
+
+                            // Apply Warning# 0 or less filter if checkbox is checked (only applies to warnings)
+                            const passesWarningFilter = excludeWarning0 && hasWarning && !hasFine && !hasTow ? v.nowarn > 0 : true;
+
+                            // Include violations (warning/fine/tow) or notes if checkbox is checked
+                            const includeRecord = (hasWarning || hasFine || hasTow) || (isNote && includeNotes);
+
+                            return includeRecord && passesWarningFilter;
+                        });
 
                         const suiteGroups = {};
                         const unregisteredGroups = {};
 
                         cleanWarnings.forEach(v => {
                             const s = v.suite ? v.suite.toUpperCase() : "BM01";
-                            const row = [s, v.plate, toPST(v.starttime), `Warning #${v.nowarn}`, `"${(v.name || "").replace(/"/g, '""')}"`];
+
+                            // Determine violation type - check in priority order: Tow > Fine > Warning > Note
+                            let violationType = "";
+                            if (v.notow !== null && v.notow !== undefined && v.notow !== "") {
+                                violationType = `Tow #${v.notow}`;
+                            } else if (v.noticket !== null && v.noticket !== undefined && v.noticket !== "") {
+                                violationType = `Fine #${v.noticket}`;
+                            } else if (v.nowarn !== null && v.nowarn !== undefined && v.nowarn !== "") {
+                                violationType = `Warning #${v.nowarn}`;
+                            } else {
+                                violationType = "Note";
+                            }
+
+                            const row = [s, v.plate, toPST(v.starttime), violationType, `"${(v.name || "").replace(/"/g, '""')}"`];
 
                             if (["BM01", "STRATA1", "UNKNOWN", ""].includes(s)) {
                                 if (!unregisteredGroups[v.plate]) unregisteredGroups[v.plate] = [];
@@ -116,7 +148,7 @@ document.getElementById('prepPage').addEventListener('click', async () => {
                         let csvRows = ["\ufeff"]; // BOM for Excel
 
                         csvRows.push("SECTION 1: TOW ELIGIBLE SUITES");
-                        csvRows.push("Suite,Plate,Date/Time (PST),Warning Level,Notes");
+                        csvRows.push("Suite,Plate,Date/Time (PST),Violation Type,Notes");
                         Object.keys(suiteGroups).sort().forEach(s => {
                             if (suiteGroups[s].length >= 2) {
                                 suiteGroups[s].forEach(line => csvRows.push(line.join(",")));
@@ -126,7 +158,7 @@ document.getElementById('prepPage').addEventListener('click', async () => {
 
                         csvRows.push("");
                         csvRows.push("SECTION 2: UNREGISTERED PLATES - REPEAT OFFENDERS (2+ HITS)");
-                        csvRows.push("Suite,Plate,Date/Time (PST),Warning Level,Notes");
+                        csvRows.push("Suite,Plate,Date/Time (PST),Violation Type,Notes");
                         Object.keys(unregisteredGroups).sort().forEach(p => {
                             if (unregisteredGroups[p].length >= 2) {
                                 unregisteredGroups[p].forEach(line => csvRows.push(line.join(",")));
@@ -136,19 +168,36 @@ document.getElementById('prepPage').addEventListener('click', async () => {
 
                         csvRows.push("");
                         csvRows.push("SECTION 3: UNREGISTERED PLATES - SINGLE HIT ONLY");
-                        csvRows.push("Suite,Plate,Date/Time (PST),Warning Level,Notes");
-                        Object.keys(unregisteredGroups).sort().forEach(p => {
+                        csvRows.push("Suite,Plate,Date/Time (PST),Violation Type,Notes");
+
+                        // Collect single-hit entries with their timestamps for sorting
+                        const singleHitEntries = [];
+                        Object.keys(unregisteredGroups).forEach(p => {
                             if (unregisteredGroups[p].length === 1) {
-                                csvRows.push(unregisteredGroups[p][0].join(","));
+                                const entry = unregisteredGroups[p][0];
+                                // Store the row with its original timestamp for sorting
+                                const plateRecord = cleanWarnings.find(v => v.plate === entry[1]);
+                                singleHitEntries.push({
+                                    row: entry,
+                                    timestamp: plateRecord ? plateRecord.starttime : 0
+                                });
                             }
+                        });
+
+                        // Sort by timestamp descending (most recent first)
+                        singleHitEntries.sort((a, b) => b.timestamp - a.timestamp);
+
+                        // Add sorted entries to CSV
+                        singleHitEntries.forEach(entry => {
+                            csvRows.push(entry.row.join(","));
                         });
 
                         // Stats
                         const stats = {
                             total: records.length,
-                            clean: cleanWarnings.length,
-                            suitesOver2: Object.keys(suiteGroups).filter(s => suiteGroups[s].length >= 2).length,
-                            repeat: Object.keys(unregisteredGroups).filter(p => unregisteredGroups[p].length >= 2).length
+                            towEligibleSuites: Object.keys(suiteGroups).filter(s => suiteGroups[s].length >= 2).length,
+                            unregisteredRepeat: Object.keys(unregisteredGroups).filter(p => unregisteredGroups[p].length >= 2).length,
+                            unregisteredSingle: Object.keys(unregisteredGroups).filter(p => unregisteredGroups[p].length === 1).length
                         };
 
                         resolve({ csvContent: csvRows.join("\n"), stats });
@@ -186,10 +235,15 @@ document.getElementById('prepPage').addEventListener('click', async () => {
         btn.innerText = "✅ Download Complete";
         btn.style.background = "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"; // Success Green
         status.innerHTML = `
-            <span style="color:white">Stats:</span><br>
+            <span style="color:white; font-weight:bold;">Stats:</span><br>
+            <div style="font-size:11px; line-height:1.4; margin-top:5px;">
             • ${result.stats.total} Total Records<br>
-            • ${result.stats.suitesOver2} Tow Eligible Suites<br>
-            • ${result.stats.repeat} Repeat Offenders
+            • ${result.stats.towEligibleSuites} Tow Eligible Suites<br>
+            • ${result.stats.unregisteredRepeat} Unregistered Plates 2+ Violations<br>
+            &nbsp;&nbsp;(Tow Immediately)<br>
+            • ${result.stats.unregisteredSingle} Unregistered Plates 1 Violation<br>
+            &nbsp;&nbsp;(Tow Immediately)
+            </div>
         `;
 
         // Reset button after 3 seconds
