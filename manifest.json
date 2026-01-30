@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pass 10x Report Generator",
-  "version": "2.0",
+  "version": "3.0.0",
   "permissions": [
     "scripting",
     "activeTab",
@@ -15,5 +15,11 @@
   },
   "action": {
     "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "pass10xreportgenerator_16.jpg",
+    "32": "pass10xreportgenerator_32.jpg",
+    "48": "pass10xreportgenerator_48.jpg",
+    "128": "pass10xreportgenerator_128.jpg"
   }
 }
