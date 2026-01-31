@@ -10,6 +10,8 @@ let cachedActivePasses = null; // Stores active parking passes
 let currentMode = 'check'; // 'report' or 'check'
 let allResults = []; // Stores all check results for filtering
 let activeFilters = { tow: true, fine: true, warning: true, activePass: true }; // Active filter state
+let ocrUsed = false; // Tracks if OCR was used for current plates
+let selectedImageFile = null; // Stores selected image file for OCR
 
 // ===== PERSISTENCE =====
 function saveState() {
@@ -321,6 +323,165 @@ function generateCSVReport(cleanWarnings) {
     return { csvContent: csvRows.join("\n"), stats };
 }
 
+// ===== PLATE NORMALIZATION =====
+function normalizePlate(plate) {
+    // Remove all spaces from license plates (BC and other formats)
+    // Pass10x doesn't use spaces in their format
+    return plate.toUpperCase().replace(/\s+/g, '');
+}
+
+// ===== OCR FUNCTIONALITY =====
+async function getGeminiApiKey() {
+    // Hardcoded settings - no configuration needed
+    const workerUrl = 'https://pass10x-report-generator.ervinong91.workers.dev';
+    const authToken = 'wicJlS3cF^7OB*76!UCnjLRo6L7Ujh%J';
+
+    // Fetch API key from Cloudflare Worker
+    const response = await fetch(workerUrl, {
+        method: 'GET',
+        headers: {
+            'X-Auth-Token': authToken,
+        },
+    });
+
+    if (!response.ok) {
+        if (response.status === 401) {
+            throw new Error('Authentication failed. Please check your Auth Token in Settings.');
+        }
+        throw new Error(`Failed to fetch API key: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.apiKey) {
+        throw new Error('No API key returned from worker.');
+    }
+
+    return data.apiKey;
+}
+
+async function performOCR(imageFile) {
+    try {
+        // Get API key from Cloudflare Worker
+        const apiKey = await getGeminiApiKey();
+
+        // Convert image to base64
+        const base64Image = await fileToBase64(imageFile);
+
+        // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
+        const base64Data = base64Image.split(',')[1];
+
+        // Determine MIME type
+        const mimeType = imageFile.type || 'image/jpeg';
+
+        // Call Gemini Vision API
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        {
+                            text: "Extract all license plate numbers from this image. Return ONLY the plate numbers, one per line, with no additional text, explanations, or formatting. If there are no license plates visible, return 'NONE'."
+                        },
+                        {
+                            inline_data: {
+                                mime_type: mimeType,
+                                data: base64Data
+                            }
+                        }
+                    ]
+                }]
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`Gemini API error: ${response.status} - ${JSON.stringify(errorData)}`);
+        }
+
+        const result = await response.json();
+
+        // Extract text from Gemini response
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        if (!text || text.trim() === 'NONE') {
+            throw new Error('No license plates detected in the image.');
+        }
+
+        // Parse and normalize plates
+        const plates = text
+            .split('\n')
+            .map(p => p.trim())
+            .map(p => normalizePlate(p))
+            .filter(p => p.length > 0)
+            .filter(p => /^[A-Z0-9]+$/.test(p));
+
+        if (plates.length === 0) {
+            throw new Error('No valid license plates detected in the image.');
+        }
+
+        return plates;
+
+    } catch (error) {
+        console.error('[OCR Error]', error);
+        throw error;
+    }
+}
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+// Compress image to reduce size and speed up OCR
+// Optimized for speed - license plates don't need high resolution
+async function compressImage(file, maxWidth = 1024, maxHeight = 768, quality = 0.65) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            const img = new Image();
+
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // Calculate new dimensions while maintaining aspect ratio
+                if (width > maxWidth || height > maxHeight) {
+                    const ratio = Math.min(maxWidth / width, maxHeight / height);
+                    width = width * ratio;
+                    height = height * ratio;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Convert to blob
+                canvas.toBlob((blob) => {
+                    resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+                }, 'image/jpeg', quality);
+            };
+
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
 // ===== PLATE CHECKING =====
 function parsePlateInput(inputText) {
     if (!inputText || !inputText.trim()) {
@@ -331,6 +492,7 @@ function parsePlateInput(inputText) {
         .toUpperCase()
         .split(/[\n,\s]+/)
         .map(p => p.trim())
+        .map(p => normalizePlate(p)) // Normalize each plate (remove spaces)
         .filter(p => p.length > 0)
         .filter(p => /^[A-Z0-9]+$/.test(p)); // Only letters and numbers, no spaces or special chars
 
@@ -421,12 +583,24 @@ function determineEnforcementAction(plate, records, activePasses = [], rawRecord
         // Get active pass details using rawRecords for accurate monthly counting
         const passDetails = getActivePassDetails(plate, suiteFromRecords, recordsForPassCounting);
 
+        // Determine status based on whether plate has active pass
+        let status, details;
+        if (passDetails.hasActivePass) {
+            // Has active pass - no action needed
+            status = '🟢 NO VIOLATIONS';
+            details = isSuite ? `Suite: ${suiteFromRecords}. No violations.` : 'No violations found in the last 180 days.';
+        } else {
+            // No active pass - unregistered plate should get warning
+            status = '🟢 WARNING ONLY';
+            details = isSuite ? `Suite: ${suiteFromRecords}. No violations.` : 'Unregistered plate. No violations.';
+        }
+
         return {
             plate: plate,
             action: 'warning',
-            status: '🟢 NO VIOLATIONS',
+            status: status,
             violationCount: 0,
-            details: isSuite ? `Suite: ${suiteFromRecords}. No violations.` : 'No violations found in the last 180 days.',
+            details: details,
             isSuite: isSuite,
             suite: suiteFromRecords,
             violations: [],
@@ -444,22 +618,52 @@ function determineEnforcementAction(plate, records, activePasses = [], rawRecord
         const suiteFromRecords = getSuiteFromRecords(plate, recordsForPassCounting);
         const isSuite = suiteFromRecords && !["BM01", "STRATA1", "UNKNOWN", ""].includes(suiteFromRecords.toUpperCase());
 
-        // Get active pass details using rawRecords for accurate monthly counting
-        const passDetails = getActivePassDetails(plate, suiteFromRecords, recordsForPassCounting);
+        // CRITICAL: For suite plates, check for suite-wide violations before returning
+        // Don't return early if this plate belongs to a suite - need to check suite violations
+        if (isSuite) {
+            // Check if the suite has any violations (from any plate)
+            const suiteViolations = records.filter(v =>
+                v.suite && v.suite.toUpperCase() === suiteFromRecords.toUpperCase() && isValidViolation(v)
+            );
 
-        return {
-            plate: plate,
-            action: 'warning',
-            status: '🟢 NO VIOLATIONS',
-            violationCount: 0,
-            details: isSuite ? `Suite: ${suiteFromRecords}. No violations.` : 'No violations found in the last 180 days.',
-            isSuite: isSuite,
-            suite: suiteFromRecords,
-            violations: [],
-            hasActivePass: passDetails.hasActivePass,
-            passExpiration: passDetails.passExpiration,
-            monthlyPassCount: passDetails.monthlyPassCount
-        };
+            if (suiteViolations.length > 0) {
+                // Suite has violations - don't return early, let the main logic handle it
+                // Create a synthetic plate record to continue processing
+                plateRecord = { plate: plate, suite: suiteFromRecords };
+            }
+        }
+
+        // If still no plate record (unregistered plate), return early
+        if (!plateRecord) {
+            // Get active pass details using rawRecords for accurate monthly counting
+            const passDetails = getActivePassDetails(plate, suiteFromRecords, recordsForPassCounting);
+
+            // Determine status based on whether plate has active pass
+            let status, details;
+            if (passDetails.hasActivePass) {
+                // Has active pass - no action needed
+                status = '🟢 NO VIOLATIONS';
+                details = isSuite ? `Suite: ${suiteFromRecords}. No violations.` : 'No violations found in the last 180 days.';
+            } else {
+                // No active pass - unregistered plate should get warning
+                status = '🟢 WARNING ONLY';
+                details = isSuite ? `Suite: ${suiteFromRecords}. No violations.` : 'Unregistered plate. No violations.';
+            }
+
+            return {
+                plate: plate,
+                action: 'warning',
+                status: status,
+                violationCount: 0,
+                details: details,
+                isSuite: isSuite,
+                suite: suiteFromRecords,
+                violations: [],
+                hasActivePass: passDetails.hasActivePass,
+                passExpiration: passDetails.passExpiration,
+                monthlyPassCount: passDetails.monthlyPassCount
+            };
+        }
     }
 
     const suite = plateRecord.suite ? plateRecord.suite.toUpperCase() : "BM01";
@@ -574,12 +778,20 @@ function createResultCard(result) {
     // Show active pass warning with expiration and monthly count
     if (result.hasActivePass) {
         let warningMessage = '';
-        if (result.action === 'tow') {
-            warningMessage = '⚠️ HAS ACTIVE PASS - DO NOT TOW';
-        } else if (result.action === 'fine') {
-            warningMessage = '⚠️ HAS ACTIVE PASS - DO NOT FINE';
+
+        // If no violations, no action needed
+        if (result.violationCount === 0) {
+            warningMessage = '✅ HAS ACTIVE PASS - NO ACTION NEEDED';
         } else {
-            warningMessage = '⚠️ HAS ACTIVE PASS - ISSUE WARNING ONLY';
+            // If there are prior violations, the next one would escalate to fine/tow
+            // So we warn based on what the action WOULD be without the pass
+            if (result.action === 'tow') {
+                warningMessage = '⚠️ HAS ACTIVE PASS - DO NOT TOW';
+            } else {
+                // For any prior violations (1+), warn DO NOT FINE
+                // because the next violation would be at fine/tow level
+                warningMessage = '⚠️ HAS ACTIVE PASS - DO NOT FINE';
+            }
         }
 
         // Format expiration date
@@ -591,26 +803,27 @@ function createResultCard(result) {
                 month: 'short', day: 'numeric', year: 'numeric',
                 hour: '2-digit', minute: '2-digit', hour12: true
             });
-            expirationText = `<div style="font-size: 10px; margin-top: 3px; color: #ffc107;">Expires: ${formatted}</div>`;
+            expirationText = `<div style="font-size: 11px; margin-top: 4px; color: #1e293b;">Expires: ${formatted}</div>`;
         }
 
         // Monthly pass count
         let monthlyCountText = '';
         if (result.monthlyPassCount > 0) {
-            monthlyCountText = `<div style="font-size: 10px; margin-top: 2px; color: #00d4ff;">This Month: ${result.monthlyPassCount} pass${result.monthlyPassCount > 1 ? 'es' : ''}</div>`;
+            monthlyCountText = `<div style="font-size: 11px; margin-top: 2px; color: #64748b;">This Month: ${result.monthlyPassCount} pass${result.monthlyPassCount > 1 ? 'es' : ''}</div>`;
         }
 
         activePassWarning = `
             <div style="
-                background: rgba(255, 193, 7, 0.3);
-                border: 2px solid #ffc107;
-                border-radius: 4px;
-                padding: 6px 8px;
-                margin-top: 6px;
-                font-size: 11px;
-                font-weight: bold;
-                color: #ffc107;
+                background: #fffbeb;
+                border: 1px solid #f59e0b;
+                border-radius: 6px;
+                padding: 10px 12px;
+                margin-top: 8px;
+                font-size: 12px;
+                font-weight: 600;
+                color: #1e293b;
                 text-align: center;
+                line-height: 1.4;
             ">
                 ${warningMessage}
                 ${expirationText}
@@ -661,7 +874,7 @@ function createResultCard(result) {
     }
 
     const plateDisplay = result.isSuite && result.suite
-        ? `${result.plate} <span style="color: #00d4ff; font-size: 11px;">(Suite ${result.suite})</span>`
+        ? `${result.plate} <span style="color: #64748b; font-size: 11px;">(Suite ${result.suite})</span>`
         : result.plate;
 
     // Show monthly pass count for suites without active passes (to avoid duplication)
@@ -670,7 +883,7 @@ function createResultCard(result) {
         monthlyPassInfo = `
             <div style="
                 font-size: 10px;
-                color: #00d4ff;
+                color: #64748b;
                 margin-top: 4px;
                 font-style: italic;
             ">
@@ -858,7 +1071,13 @@ document.getElementById('checkPlatesBtn').addEventListener('click', async () => 
         return;
     }
 
-    // Check if data has been fetched
+    // Always clear cache before fetching to ensure fresh data
+    cachedRecords = null;
+    cachedRawRecords = null;
+    cachedActivePasses = null;
+    console.log('[Pass10x] Cache cleared - fetching fresh data');
+
+    // Always fetch fresh data
     if (!cachedRecords) {
         checkBtn.disabled = true;
         checkBtn.innerText = "⏳ Fetching Data...";
@@ -928,9 +1147,18 @@ document.getElementById('clearInputBtn').addEventListener('click', () => {
     const actionButtons = document.getElementById('actionButtons');
     const checkHelpInfo = document.getElementById('checkHelpInfo');
     const minimizedInput = document.getElementById('minimizedInput');
+    const imagePreview = document.getElementById('imagePreview');
 
     document.getElementById('plateInput').value = '';
     document.getElementById('resultsContainer').style.display = 'none';
+
+    // Clear image preview
+    if (imagePreview) {
+        imagePreview.classList.remove('active');
+        document.getElementById('previewImg').src = '';
+    }
+    selectedImageFile = null;
+    ocrUsed = false;
 
     // Show input section
     if (inputSection) inputSection.style.display = 'block';
@@ -943,7 +1171,7 @@ document.getElementById('clearInputBtn').addEventListener('click', () => {
     cachedRecords = null;
     cachedRawRecords = null;
     cachedActivePasses = null;
-    console.log('[Pass10x] Cleared all cached data');
+    console.log('[Pass10x] Cleared all cached data and image preview');
     document.getElementById('plateInput').focus();
     saveState();
 });
@@ -1082,10 +1310,286 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// ===== OCR EVENT HANDLERS =====
+
+// Process image file (from upload or drag-drop)
+async function processImageFile(file) {
+    console.log('[OCR] Processing image file:', file.name, file.type);
+    selectedImageFile = file;
+
+    // Show loading overlay
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const loadingText = loadingOverlay.querySelector('.loading-text');
+    loadingOverlay.classList.add('active');
+
+    // Show image preview
+    const preview = document.getElementById('imagePreview');
+    const previewImg = document.getElementById('previewImg');
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        preview.classList.add('active');
+    };
+
+    reader.readAsDataURL(file);
+
+    // Disable input during processing
+    const plateInput = document.getElementById('plateInput');
+    plateInput.disabled = true;
+
+    try {
+        // Compress image to speed up OCR
+        console.log('[OCR] Compressing image...');
+        loadingText.textContent = '🔄 Compressing image...';
+
+        const compressedFile = await compressImage(file);
+        console.log('[OCR] Original size:', (file.size / 1024).toFixed(2), 'KB');
+        console.log('[OCR] Compressed size:', (compressedFile.size / 1024).toFixed(2), 'KB');
+
+        // Convert to base64 for background worker
+        loadingText.textContent = '📤 Sending to background processor...';
+        const base64Image = await fileToBase64(compressedFile);
+        const base64Data = base64Image.split(',')[1];
+        const mimeType = compressedFile.type || 'image/jpeg';
+
+        // Send to background worker for processing
+        console.log('[OCR] Sending to background worker...');
+        loadingText.textContent = '🔍 Scanning with AI...';
+
+        const response = await chrome.runtime.sendMessage({
+            action: 'startOCR',
+            base64Image: base64Data,
+            mimeType: mimeType
+        });
+
+        // Hide loading overlay
+        loadingOverlay.classList.remove('active');
+        loadingText.textContent = '🔍 Scanning image...';
+
+        if (response.success) {
+            console.log('[OCR] Detected', response.plates.length, 'plates');
+
+            // Don't clear storage yet - let the modal buttons handle it
+            // This ensures the user can close and reopen the popup without losing plates
+
+            // Show verification modal
+            showVerificationModal(response.plates);
+
+            plateInput.disabled = false;
+        } else {
+            throw new Error(response.error);
+        }
+
+    } catch (error) {
+        // Hide loading overlay
+        loadingOverlay.classList.remove('active');
+        loadingText.textContent = '🔍 Scanning image...';
+
+        alert(`OCR Error: ${error.message}`);
+        plateInput.disabled = false;
+
+        // Clear preview on error
+        preview.classList.remove('active');
+        selectedImageFile = null;
+
+        // Clear OCR status
+        await chrome.storage.local.remove(['ocrStatus', 'ocrResults', 'ocrError', 'ocrProgress']);
+    }
+}
+
+// Camera Icon - Trigger file selection
+document.getElementById('cameraIcon').addEventListener('click', () => {
+    console.log('[OCR] Camera icon clicked');
+    document.getElementById('fileInput').click();
+});
+
+// File Input - Handle image selection
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+
+    if (!file) {
+        return;
+    }
+
+    console.log('[OCR] File selected:', file.name, file.type);
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+        alert('Please select a valid image file.');
+        return;
+    }
+
+    await processImageFile(file);
+
+    // Clear file input
+    e.target.value = '';
+});
+
+// Drag and Drop Handlers for Textarea
+const plateInputElement = document.getElementById('plateInput');
+
+plateInputElement.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('[OCR] Drag over detected');
+    plateInputElement.classList.add('drag-over');
+});
+
+plateInputElement.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('[OCR] Drag leave detected');
+    plateInputElement.classList.remove('drag-over');
+});
+
+plateInputElement.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('[OCR] Drop detected');
+    plateInputElement.classList.remove('drag-over');
+
+    const files = e.dataTransfer.files;
+    console.log('[OCR] Files dropped:', files.length);
+
+    if (files.length > 0) {
+        const file = files[0];
+        console.log('[OCR] File type:', file.type, 'Name:', file.name);
+
+        if (file.type.startsWith('image/')) {
+            processImageFile(file);
+        } else {
+            alert('Please drop an image file (JPG, PNG, etc.).');
+        }
+    }
+});
+
+// Verification Modal Functions
+function showVerificationModal(plates) {
+    const modal = document.getElementById('verifyModal');
+    const detectedPlates = document.getElementById('detectedPlates');
+
+    // Display detected plates - one per line for clean column layout
+    detectedPlates.textContent = plates.join('\n');
+
+    // Update modal title with count
+    const modalTitle = modal.querySelector('.modal-title');
+    modalTitle.textContent = `⚠️ Verify ${plates.length} Detected Plate${plates.length > 1 ? 's' : ''}`;
+
+    // Show modal
+    modal.classList.add('active');
+
+    // Store plates temporarily
+    modal.dataset.plates = plates.join(',');
+    ocrUsed = true;
+}
+
+// Confirm Verification Button
+document.getElementById('confirmVerifyBtn').addEventListener('click', async () => {
+    const modal = document.getElementById('verifyModal');
+    const plates = modal.dataset.plates.split(',');
+
+    // Populate input with verified plates
+    document.getElementById('plateInput').value = plates.join('\n');
+
+    // Close modal
+    modal.classList.remove('active');
+
+    // Clear OCR status from storage now that user has interacted
+    await chrome.storage.local.remove(['ocrStatus', 'ocrResults', 'ocrError', 'ocrProgress', 'ocrTimestamp']);
+
+    // Automatically trigger check plates
+    document.getElementById('checkPlatesBtn').click();
+});
+
+// Cancel Verification Button - Allow editing
+document.getElementById('cancelVerifyBtn').addEventListener('click', async () => {
+    const modal = document.getElementById('verifyModal');
+    const plates = modal.dataset.plates.split(',');
+
+    // Populate input with plates for manual editing
+    document.getElementById('plateInput').value = plates.join('\n');
+
+    // Close modal
+    modal.classList.remove('active');
+
+    // Clear OCR status from storage now that user has interacted
+    await chrome.storage.local.remove(['ocrStatus', 'ocrResults', 'ocrError', 'ocrProgress', 'ocrTimestamp']);
+
+    // Focus on textarea
+    document.getElementById('plateInput').focus();
+});
+
+// Close modals on background click
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal')) {
+        e.target.classList.remove('active');
+    }
+});
+
+// Check for pending/completed OCR from background worker
+async function checkPendingOCR() {
+    const storage = await chrome.storage.local.get(['ocrStatus', 'ocrResults', 'ocrError', 'ocrProgress']);
+
+    if (storage.ocrStatus === 'processing') {
+        // OCR is still processing in background
+        console.log('[OCR] Found pending OCR, showing progress...');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingText = loadingOverlay.querySelector('.loading-text');
+        loadingOverlay.classList.add('active');
+        loadingText.textContent = storage.ocrProgress || '🔍 Scanning in background...';
+
+        // Poll for completion
+        const checkInterval = setInterval(async () => {
+            const updated = await chrome.storage.local.get(['ocrStatus', 'ocrResults', 'ocrError']);
+
+            if (updated.ocrStatus === 'completed') {
+                clearInterval(checkInterval);
+                loadingOverlay.classList.remove('active');
+                loadingText.textContent = '🔍 Scanning with AI...';
+
+                console.log('[OCR] Background OCR completed!');
+                showVerificationModal(updated.ocrResults);
+
+                // Don't clear status yet - wait for user to interact with modal
+                // This allows popup to be closed and reopened without losing results
+            } else if (updated.ocrStatus === 'error') {
+                clearInterval(checkInterval);
+                loadingOverlay.classList.remove('active');
+                loadingText.textContent = '🔍 Scanning with AI...';
+
+                alert(`OCR Error: ${updated.ocrError}`);
+
+                // Clear error status
+                await chrome.storage.local.remove(['ocrStatus', 'ocrResults', 'ocrError', 'ocrProgress']);
+            } else if (updated.ocrProgress) {
+                loadingText.textContent = updated.ocrProgress;
+            }
+        }, 500); // Check every 500ms
+    } else if (storage.ocrStatus === 'completed') {
+        // OCR completed while popup was closed
+        console.log('[OCR] Found completed OCR results!');
+        showVerificationModal(storage.ocrResults);
+
+        // Don't clear status yet - wait for user to interact with modal
+        // This allows popup to be closed and reopened without losing results
+    } else if (storage.ocrStatus === 'error') {
+        // OCR failed while popup was closed
+        console.log('[OCR] Found OCR error');
+        alert(`OCR Error: ${storage.ocrError}`);
+
+        // Clear error status
+        await chrome.storage.local.remove(['ocrStatus', 'ocrResults', 'ocrError', 'ocrProgress']);
+    }
+}
+
 // ===== INITIALIZE =====
 console.log('[Pass10x] Initializing popup...');
 initializeModeToggle();
 loadState(); // Load saved state on popup open
+
+// Check for pending OCR from background worker
+checkPendingOCR();
 
 // Ensure input section is visible if no results are displayed
 if (currentMode === 'check') {

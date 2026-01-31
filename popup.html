@@ -4,171 +4,204 @@
 <head>
   <meta charset="UTF-8">
   <style>
+    :root {
+      --bg-primary: #f5f7fa;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #e8ecf1;
+      --text-primary: #1e293b;
+      --text-secondary: #64748b;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --border: #cbd5e1;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+      --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+    }
+
     body {
       width: 570px;
-      padding: 15px;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      color: #fff;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.5;
     }
 
     h3 {
-      margin-top: 0;
-      color: #00d4ff;
-      font-size: 16px;
-      border-bottom: 2px solid #00d4ff;
-      padding-bottom: 8px;
-      text-align: center;
+      margin: 0 0 20px 0;
+      color: var(--text-primary);
+      font-size: 18px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      letter-spacing: -0.01em;
     }
 
     button {
       width: 100%;
-      padding: 16px;
-      margin-top: 15px;
+      padding: 12px 16px;
+      margin-top: 12px;
       cursor: pointer;
-      font-weight: bold;
-      border: none;
-      border-radius: 8px;
-      transition: all 0.3s ease;
+      font-weight: 500;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      transition: all 0.15s ease;
       font-size: 14px;
-      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      background: var(--accent);
       color: white;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      box-shadow: var(--shadow-sm);
+      font-family: inherit;
     }
 
     button:hover {
-      background: linear-gradient(135deg, #38ef7d 0%, #11998e 100%);
-      transform: translateY(-2px);
-      box-shadow: 0 6px 15px rgba(56, 239, 125, 0.4);
+      background: var(--accent-hover);
+      box-shadow: var(--shadow-md);
     }
 
     button:active {
-      transform: translateY(0);
+      transform: scale(0.98);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .info {
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
       border-radius: 6px;
       padding: 12px;
       margin-top: 20px;
       font-size: 12px;
-      color: #ccc;
+      color: var(--text-secondary);
       line-height: 1.5;
       text-align: center;
     }
 
     /* Mode Toggle Buttons */
     .mode-btn {
-      background: rgba(255, 255, 255, 0.1);
-      color: #aaa;
-      transition: all 0.3s ease;
-      box-shadow: none;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1.5px solid var(--border);
+      transition: all 0.15s ease;
+      box-shadow: var(--shadow-sm);
+      font-weight: 500;
     }
 
     .mode-btn:hover {
-      background: rgba(255, 255, 255, 0.15);
+      background: var(--bg-tertiary);
+      border-color: var(--accent);
       transform: translateY(0);
-      box-shadow: none;
+      box-shadow: var(--shadow-md);
     }
 
     .mode-btn.active {
-      background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+      background: var(--accent);
       color: white;
-      font-weight: bold;
-      box-shadow: 0 4px 6px rgba(0, 212, 255, 0.3);
+      font-weight: 600;
+      border-color: var(--accent);
+      box-shadow: var(--shadow-md);
     }
 
     .mode-btn.active:hover {
-      background: linear-gradient(135deg, #0099cc 0%, #00d4ff 100%);
+      background: var(--accent-hover);
+      box-shadow: var(--shadow-md);
     }
 
     /* Textarea */
     #plateInput {
       width: 100%;
       min-height: 120px;
-      padding: 10px;
+      padding: 12px;
       font-family: 'Courier New', monospace;
       font-size: 13px;
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
-      border: 2px solid rgba(0, 212, 255, 0.3);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
       border-radius: 6px;
       resize: vertical;
       box-sizing: border-box;
       outline: none;
+      transition: all 0.15s ease;
     }
 
     #plateInput:focus {
-      border-color: #00d4ff;
-      background: rgba(255, 255, 255, 0.15);
-      box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
 
     /* Minimized Input Mode */
     #minimizedInput button:hover {
-      background: rgba(255, 255, 255, 0.15);
+      background: var(--bg-tertiary);
       transform: translateY(0);
-      box-shadow: 0 0 10px rgba(0, 212, 255, 0.4);
+      box-shadow: var(--shadow-sm);
     }
 
     /* Result Cards */
     .result-card {
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--bg-secondary);
       border-radius: 6px;
       padding: 8px 12px;
       margin-bottom: 6px;
-      border-left: 4px solid;
-      transition: all 0.2s ease;
+      border-left: 3px solid;
+      border: 1px solid var(--border);
+      border-left-width: 3px;
+      transition: all 0.15s ease;
     }
 
     .result-card:hover {
-      background: rgba(255, 255, 255, 0.08);
+      box-shadow: var(--shadow-sm);
       transform: translateX(2px);
     }
 
     .result-card.tow {
-      background-color: rgba(255, 82, 82, 0.15);
-      border-left-color: #ff5252;
+      background-color: #fef2f2;
+      border-left-color: var(--danger);
     }
 
     .result-card.fine {
-      background-color: rgba(255, 193, 7, 0.15);
-      border-left-color: #ffc107;
+      background-color: #fffbeb;
+      border-left-color: var(--warning);
     }
 
     .result-card.warning {
-      background-color: rgba(76, 175, 80, 0.15);
-      border-left-color: #4caf50;
+      background-color: #f0fdf4;
+      border-left-color: var(--success);
     }
 
     .result-plate {
       font-size: 14px;
-      font-weight: bold;
+      font-weight: 600;
       font-family: 'Courier New', monospace;
       letter-spacing: 1px;
+      color: var(--text-primary);
     }
 
     .result-status {
       font-size: 12px;
-      font-weight: bold;
+      font-weight: 600;
       margin-top: 4px;
     }
 
     .result-card.tow .result-status {
-      color: #ff5252;
+      color: var(--danger);
     }
 
     .result-card.fine .result-status {
-      color: #ffc107;
+      color: var(--warning);
     }
 
     .result-card.warning .result-status {
-      color: #4caf50;
+      color: var(--success);
     }
 
     .result-details {
       font-size: 11px;
-      color: #ccc;
+      color: var(--text-secondary);
       margin-top: 3px;
       line-height: 1.3;
     }
@@ -179,80 +212,80 @@
     }
 
     #resultsList::-webkit-scrollbar-track {
-      background: rgba(0, 0, 0, 0.2);
+      background: var(--bg-tertiary);
       border-radius: 4px;
     }
 
     #resultsList::-webkit-scrollbar-thumb {
-      background: rgba(0, 212, 255, 0.3);
+      background: var(--border);
       border-radius: 4px;
     }
 
     #resultsList::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 212, 255, 0.5);
+      background: var(--text-secondary);
     }
 
     /* Filter Buttons */
     .filter-btn {
       padding: 6px 12px;
       font-size: 11px;
-      border: 2px solid;
-      border-radius: 4px;
+      border: 1px solid;
+      border-radius: 6px;
       cursor: pointer;
-      transition: all 0.2s ease;
-      font-weight: bold;
+      transition: all 0.15s ease;
+      font-weight: 500;
       margin: 0;
     }
 
     .filter-btn.tow {
-      border-color: #ff5252;
-      background: rgba(255, 82, 82, 0.2);
-      color: #ff5252;
+      border-color: var(--danger);
+      background: var(--bg-secondary);
+      color: var(--danger);
     }
 
     .filter-btn.tow.active {
-      background: #ff5252;
+      background: var(--danger);
       color: white;
     }
 
     .filter-btn.fine {
-      border-color: #ffc107;
-      background: rgba(255, 193, 7, 0.2);
-      color: #ffc107;
+      border-color: var(--warning);
+      background: var(--bg-secondary);
+      color: #d97706;
     }
 
     .filter-btn.fine.active {
-      background: #ffc107;
-      color: #333;
+      background: var(--warning);
+      color: white;
     }
 
     .filter-btn.warning {
-      border-color: #4caf50;
-      background: rgba(76, 175, 80, 0.2);
-      color: #4caf50;
+      border-color: var(--success);
+      background: var(--bg-secondary);
+      color: var(--success);
     }
 
     .filter-btn.warning.active {
-      background: #4caf50;
+      background: var(--success);
       color: white;
     }
 
     .filter-btn.active-pass {
-      border-color: #ffc107;
-      background: rgba(255, 193, 7, 0.2);
-      color: #ffc107;
+      border-color: var(--warning);
+      background: var(--bg-secondary);
+      color: #d97706;
     }
 
     .filter-btn.active-pass.active {
-      background: #ffc107;
-      color: #333;
+      background: var(--warning);
+      color: white;
     }
 
     /* Expandable violation details */
     .violation-details {
       margin-top: 8px;
       padding-top: 8px;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      border-top: 1px solid var(--border);
       display: none;
     }
 
@@ -270,19 +303,20 @@
     .violation-details th {
       text-align: left;
       padding: 4px;
-      background: rgba(0, 0, 0, 0.2);
-      color: #00d4ff;
-      font-weight: bold;
+      background: var(--bg-tertiary);
+      color: var(--accent);
+      font-weight: 600;
     }
 
     .violation-details td {
       padding: 4px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
     }
 
     .expand-btn {
       font-size: 10px;
-      color: #00d4ff;
+      color: var(--accent);
       cursor: pointer;
       text-decoration: underline;
       margin-top: 4px;
@@ -290,7 +324,176 @@
     }
 
     .expand-btn:hover {
-      color: #00a8cc;
+      color: var(--accent-hover);
+    }
+
+    /* Verification Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 450px;
+      width: 90%;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .modal-title {
+      color: var(--text-primary);
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    .modal-body {
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
+    .modal-buttons button {
+      flex: 1;
+      margin: 0;
+      padding: 12px;
+    }
+
+    /* Image Preview */
+    #imagePreview {
+      display: none;
+      margin-top: 10px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    #imagePreview img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    #imagePreview.active {
+      display: block;
+    }
+
+    /* Drag and Drop Styling */
+    #inputSection {
+      position: relative;
+    }
+
+    #plateInput.drag-over {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.05);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .camera-icon {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 32px;
+      height: 32px;
+      background: var(--text-secondary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.15s ease;
+      z-index: 10;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .camera-icon:hover {
+      transform: scale(1.1);
+      background: var(--accent);
+      box-shadow: var(--shadow-md);
+    }
+
+    .camera-icon:active {
+      transform: scale(0.95);
+    }
+
+    /* Loading Spinner */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .loading-overlay.active {
+      display: flex;
+    }
+
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(59, 130, 246, 0.2);
+      border-top: 4px solid var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      margin-top: 20px;
+      color: var(--accent);
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    /* Better plate formatting in modal - no horizontal scroll */
+    #detectedPlates {
+      white-space: pre-wrap;
+      word-break: break-all;
+      overflow-wrap: break-word;
+      column-count: 2;
+      column-gap: 15px;
+      overflow-x: hidden;
+      color: var(--text-primary);
+    }
+
+    @media (max-width: 500px) {
+      #detectedPlates {
+        column-count: 1;
+      }
     }
   </style>
 </head>
@@ -313,11 +516,23 @@
     <div style="margin-top: 15px;">
       <!-- Input Section -->
       <div id="inputSection" style="position: relative;">
-        <textarea id="plateInput" placeholder="Enter license plates..."></textarea>
-        <div style="font-size: 11px; color: #aaa; margin-top: 5px; line-height: 1.4;">
-          Enter license plates (one per line, or separated by commas). Max 100 plates. Letters and numbers only.
-          <a href="#" id="showExample" style="color: #00d4ff; text-decoration: none;">See example</a>
+        <textarea id="plateInput" placeholder="Enter license plates or drag & drop an image here..."></textarea>
+
+        <!-- Camera Icon for Upload -->
+        <div class="camera-icon" id="cameraIcon" title="Upload image to scan plates">📷</div>
+
+        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 5px; line-height: 1.4;">
+          Type plates, drag & drop an image, or click the camera icon to scan.
+          <a href="#" id="showExample" style="color: var(--accent); text-decoration: none;">See example</a>
         </div>
+
+        <!-- Image Preview -->
+        <div id="imagePreview">
+          <img id="previewImg" src="" alt="Uploaded image">
+        </div>
+
+        <!-- Hidden File Input -->
+        <input type="file" id="fileInput" accept="image/*" style="display: none;">
       </div>
 
       <!-- Action Buttons -->
@@ -325,13 +540,13 @@
         <button id="checkPlatesBtn" style="flex: 2; margin: 0; padding: 14px;">
           🔍 Check Plates
         </button>
-        <button id="clearInputBtn" style="flex: 1; margin: 0; padding: 14px; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">
+        <button id="clearInputBtn" style="flex: 1; margin: 0; padding: 14px; background: var(--danger); border-color: var(--danger);">
           Clear
         </button>
       </div>
 
       <!-- Loading Indicator -->
-      <div id="checkStatus" class="info" style="display:none; color: #00d4ff; font-weight: bold;">
+      <div id="checkStatus" class="info" style="display:none; color: var(--accent); font-weight: 600;">
         ⏳ Checking plates...
       </div>
 
@@ -341,9 +556,9 @@
           width: 100%;
           padding: 10px;
           margin: 0;
-          background: rgba(255, 255, 255, 0.1);
-          border: 2px solid #00d4ff;
-          color: #00d4ff;
+          background: var(--bg-secondary);
+          border: 1.5px solid var(--accent);
+          color: var(--accent);
         ">
           ← Back to Search
         </button>
@@ -352,14 +567,15 @@
       <!-- Results Container -->
       <div id="resultsContainer" style="display: none; margin-top: 15px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-          <span style="font-size: 12px; color: #00d4ff; font-weight: bold;">
+          <span style="font-size: 12px; color: var(--text-primary); font-weight: 600;">
             Results (<span id="resultCount">0</span> plates)
           </span>
           <button id="downloadCSVBtn" style="
             margin: 0;
             padding: 8px 12px;
             font-size: 11px;
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            background: var(--success);
+            border-color: var(--success);
           ">
             📥 Download CSV
           </button>
@@ -376,9 +592,10 @@
         <div id="resultsList" style="
           max-height: 450px;
           overflow-y: auto;
-          background: rgba(0, 0, 0, 0.2);
+          background: var(--bg-tertiary);
           border-radius: 6px;
           padding: 8px;
+          border: 1px solid var(--border);
         ">
           <!-- Result cards will be dynamically inserted here -->
         </div>
@@ -386,20 +603,20 @@
 
       <!-- Help Text -->
       <div id="checkHelpInfo" class="info">
-        Enter plates to check their enforcement status.<br>
-        Data is fetched from the current session.
+        Enter plates manually or drag & drop an image to scan.<br>
+        AI-powered OCR extracts plates automatically.
       </div>
     </div>
   </div>
 
   <!-- Report Mode Container -->
   <div id="reportModeContainer" style="display: none;">
-    <div style="margin-top: 15px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 10px;">
-      <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px; margin-bottom: 8px;">
+    <div style="margin-top: 15px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+      <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px; margin-bottom: 8px; color: var(--text-primary);">
         <input type="checkbox" id="excludeWarning0" style="margin-right: 8px; cursor: pointer;">
         <span>Exclude Warning# 0 or less</span>
       </label>
-      <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px;">
+      <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px; color: var(--text-primary);">
         <input type="checkbox" id="includeNotes" style="margin-right: 8px; cursor: pointer;">
         <span>Include Notes (non-violations)</span>
       </label>
@@ -407,13 +624,53 @@
 
     <button id="prepPage">📥 Fetch & Download Report</button>
 
-    <div id="status" class="info" style="display:none; color: #00d4ff; font-weight: bold;">
+    <div id="status" class="info" style="display:none; color: var(--accent); font-weight: 600;">
       ⏳ Processing... please wait.
     </div>
 
     <div id="helpInfo" class="info">
       One click to fetch 180 days of data,<br>
       process warnings, and save as CSV.
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner"></div>
+    <div class="loading-text">🔍 Scanning with AI...</div>
+  </div>
+
+  <!-- Verification Modal -->
+  <div id="verifyModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-title">⚠️ Verify Scanned Plates</div>
+      <div class="modal-body">
+        <p style="margin-bottom: 10px; text-align: center;">License plates detected from your image:</p>
+        <div id="detectedPlates" style="
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          padding: 15px;
+          font-family: 'Courier New', monospace;
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--text-primary);
+          max-height: 200px;
+          overflow-y: auto;
+          overflow-x: hidden;
+          margin-bottom: 15px;
+          line-height: 1.8;
+          width: 100%;
+          box-sizing: border-box;
+        "></div>
+        <p style="color: var(--warning); font-weight: 600;">
+          ⚠️ Please verify these plates are correct before proceeding.
+        </p>
+      </div>
+      <div class="modal-buttons">
+        <button id="confirmVerifyBtn">✅ Correct - Check Plates</button>
+        <button id="cancelVerifyBtn" style="background: var(--danger); border-color: var(--danger);">✏️ Edit Plates</button>
+      </div>
     </div>
   </div>
 

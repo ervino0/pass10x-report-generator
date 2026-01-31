@@ -5,7 +5,8 @@
   "permissions": [
     "scripting",
     "activeTab",
-    "downloads"
+    "downloads",
+    "storage"
   ],
   "host_permissions": [
     "https://www.pass10x.com/*"
