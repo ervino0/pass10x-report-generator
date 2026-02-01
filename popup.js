@@ -611,7 +611,7 @@ function determineEnforcementAction(plate, records, activePasses = [], rawRecord
     }
 
     // First, find if this plate is registered to a suite
-    const plateRecord = records.find(v => v.plate && v.plate.toUpperCase() === plate.toUpperCase());
+    let plateRecord = records.find(v => v.plate && v.plate.toUpperCase() === plate.toUpperCase());
 
     if (!plateRecord) {
         // Try to get suite from all records (including expired passes)
