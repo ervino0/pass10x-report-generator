@@ -534,9 +534,7 @@ function determineEnforcementAction(plate, records, activePasses = [], rawRecord
         // Check for active pass
         if (activePasses && activePasses.length > 0) {
             const activePass = activePasses.find(pass => {
-                const plateMatch = pass.plate && pass.plate.toUpperCase() === plate.toUpperCase();
-                const suiteMatch = suite && pass.suite && pass.suite.toUpperCase() === suite.toUpperCase();
-                return plateMatch || suiteMatch;
+                return pass.plate && pass.plate.toUpperCase() === plate.toUpperCase();
             });
 
             if (activePass) {

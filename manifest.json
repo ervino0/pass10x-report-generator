@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Pass 10x Report Generator",
-  "version": "3.5.0",
+  "name": "Pass10x Report Generator",
+  "version": "3.6",
   "permissions": [
     "scripting",
     "activeTab",
@@ -15,12 +15,18 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "AV3_16.png",
+      "19": "AV3_16.png",
+      "32": "AV3_32.png",
+      "38": "AV3_32.png"
+    }
   },
   "icons": {
-    "16": "pass10xreportgenerator_16.jpg",
-    "32": "pass10xreportgenerator_32.jpg",
-    "48": "pass10xreportgenerator_48.jpg",
-    "128": "pass10xreportgenerator_128.jpg"
+    "16": "AV3_16.png",
+    "32": "AV3_32.png",
+    "48": "AV3_48.png",
+    "128": "AV3_128.png"
   }
 }
